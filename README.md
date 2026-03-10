@@ -41,7 +41,10 @@ python server.py
 默认管理员：`admin` / `admin123`
 
 使用 ComfyUI 生成图片/视频/数字人声前，请先启动 ComfyUI 并准备模型。具体步骤见：[ComfyUI 工作流与模型](docs/ComfyUI工作流与模型.md)。
-
+<img src="docs/tab001_001.png" alt="tab001_001" width="400">
+<img src="docs/tab001_002.png" alt="tab001_002" width="400">
+<img src="docs/tab002_002.png" alt="tab002_002" width="400">
+<img src="docs/tab003_003.png" alt="tab003_003" width="400">
 ## 功能概览
 
 - **Excel 编辑**：加载/保存 Excel，多工作表编辑（Handsontable）
