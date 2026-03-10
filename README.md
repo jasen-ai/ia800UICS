@@ -1,4 +1,4 @@
-# UICS - 多用户 Excel 编辑与媒体生成系统
+# UICS - Excel编辑 与Ai短剧漫剧AIGC批量生成工具
 
 ## 概述
 
