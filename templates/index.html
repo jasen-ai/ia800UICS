@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UICS - 多用户Excel编辑与媒体生成系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@latest/dist/handsontable.full.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 登录界面 -->
+        <div v-if="!isAuthenticated" class="login-container">
+            <div class="login-box">
+                <h1>UICS 系统登录</h1>
+                <form @submit.prevent="login">
+                    <div class="form-group">
+                        <label>用户名</label>
+                        <input type="text" v-model="loginForm.username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>密码</label>
+                        <input type="password" v-model="loginForm.password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">登录</button>
+                    <button type="button" class="btn btn-secondary" @click="showRegister = true">注册</button>
+                    <div v-if="loginError" class="error-message">{{ loginError }}</div>
+                </form>
+                
+                <!-- 注册表单 -->
+                <div v-if="showRegister" class="register-box">
+                    <h2>注册新用户</h2>
+                    <form @submit.prevent="register">
+                        <div class="form-group">
+                            <label>用户名</label>
+                            <input type="text" v-model="registerForm.username" required>
+                        </div>
+                        <div class="form-group">
+                            <label>密码</label>
+                            <input type="password" v-model="registerForm.password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">注册</button>
+                        <button type="button" class="btn btn-secondary" @click="showRegister = false">取消</button>
+                        <div v-if="registerError" class="error-message">{{ registerError }}</div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主界面 -->
+        <div v-if="isAuthenticated" class="main-container">
+            <!-- 顶部导航栏 -->
+            <header class="header">
+                <div class="header-left">
+                    <h1>IA800 UICS</h1>
+                </div>
+                <div class="header-right">
+                    <span class="user-info">用户: {{ currentUser.username }} ({{ currentUser.role }})</span>
+                    <button class="btn btn-secondary" @click="logout">登出</button>
+                </div>
+            </header>
+
+            <!-- 主要内容区域 -->
+            <div class="content">
+                <!-- 标签页导航 -->
+                <div class="tabs">
+                    <button 
+                        class="tab-button" 
+                        :class="{ active: activeTab === 'excel' }"
+                        @click="activeTab = 'excel'"
+                    >
+                        Excel编辑
+                    </button>
+                    <button 
+                        class="tab-button" 
+                        :class="{ active: activeTab === 'generate' }"
+                        @click="activeTab = 'generate'"
+                    >
+                        媒体生成
+                    </button>
+                    <button 
+                        class="tab-button" 
+                        :class="{ active: activeTab === 'tasks' }"
+                        @click="activeTab = 'tasks'"
+                    >
+                        任务管理
+                    </button>
+                </div>
+
+                <!-- Excel编辑标签页 -->
+                <div v-show="activeTab === 'excel'" class="tab-content">
+                    <div class="excel-controls">
+                        <button class="btn btn-primary" @click="loadExcel">加载Excel</button>
+                        <button class="btn btn-success" @click="saveExcel" :disabled="!excelLoaded">保存Excel</button>
+                        <select v-model="selectedSheet" @change="loadSheetData" v-if="sheets.length > 0">
+                            <option v-for="sheet in sheets" :key="sheet" :value="sheet">{{ sheet }}</option>
+                        </select>
+                    </div>
+                    
+                    <div v-if="loading" class="loading">加载中...</div>
+                    <div v-if="error" class="error-message">{{ error }}</div>
+                    
+                    <!-- 使用v-show保持DOM元素存在，避免切换标签页时被销毁 -->
+                    <div id="excel-container" v-show="excelLoaded && selectedSheet"></div>
+                    <div v-if="!excelLoaded && !loading" class="loading" style="padding: 2rem; text-align: center; color: #999;">
+                        请先点击"加载Excel"按钮加载数据
+                    </div>
+                </div>
+
+                <!-- 媒体生成标签页 -->
+                <div v-if="activeTab === 'generate'" class="tab-content">
+                    <div class="generate-section">
+                        <h2>图片生成</h2>
+                        <div class="form-group">
+                            <label>输出目录</label>
+                            <input type="text" v-model="generateConfig.image.outputDir" placeholder="./output">
+                        </div>
+                        <div class="form-group">
+                            <label>剧集过滤</label>
+                            <input type="text" v-model="generateConfig.image.episodeFilter" placeholder="EP01 (可选)">
+                        </div>
+                        <div class="form-group">
+                            <label>分镜过滤</label>
+                            <input type="text" v-model="generateConfig.image.shotFilter" placeholder="EP01_SQ01 (可选，留空表示所有分镜)">
+                        </div>
+                        <div class="form-group">
+                            <label>生成器类型</label>
+                            <select v-model="generateConfig.image.generatorType">
+                                <option value="comfyui">ComfyUI</option>
+                                <option value="nanobanana">Nano Banana</option>
+                            </select>
+                        </div>
+                        <div class="form-group" v-if="generateConfig.image.generatorType === 'comfyui'">
+                            <label>ComfyUI服务器</label>
+                            <input type="text" v-model="generateConfig.image.comfyuiServer" placeholder="127.0.0.1:8188">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" v-model="generateConfig.image.generateReference"> 生成参考图
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" v-model="generateConfig.image.generateFirstFrame"> 生成首帧图片
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" v-model="generateConfig.image.generateLastFrame"> 生成末帧图片
+                            </label>
+                        </div>
+                        <button class="btn btn-primary" @click="generateImage">开始生成图片</button>
+                    </div>
+
+                    <div class="generate-section">
+                        <h2>视频生成</h2>
+                        <div class="form-group">
+                            <label>输出目录</label>
+                            <input type="text" v-model="generateConfig.video.outputDir" placeholder="./output">
+                        </div>
+                        <div class="form-group">
+                            <label>剧集过滤</label>
+                            <input type="text" v-model="generateConfig.video.episodeFilter" placeholder="EP01 (可选)">
+                        </div>
+                        <div class="form-group">
+                            <label>分镜过滤</label>
+                            <input type="text" v-model="generateConfig.video.shotFilter" placeholder="EP01_SQ01 (可选)">
+                        </div>
+                        <div class="form-group">
+                            <label>生成器类型</label>
+                            <select v-model="generateConfig.video.generatorType">
+                                <option value="comfyui">ComfyUI</option>
+                                <option value="sora">Sora</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>ComfyUI服务器</label>
+                            <input type="text" v-model="generateConfig.video.comfyuiServer" placeholder="127.0.0.1:8188">
+                        </div>
+                        <button class="btn btn-primary" @click="generateVideo">开始生成视频</button>
+                    </div>
+
+                    <div class="generate-section">
+                        <h2>音频生成</h2>
+                        <p class="section-desc">(参考音频及人工配音可以用 XwavXaudio 录音棚模式降噪录制导出flac 或wav格式)</p>
+                        <div class="form-group">
+                            <label>输出目录</label>
+                            <input type="text" v-model="generateConfig.audio.outputDir" placeholder="./output">
+                        </div>
+                        <div class="form-group">
+                            <label>剧集过滤</label>
+                            <input type="text" v-model="generateConfig.audio.episodeFilter" placeholder="EP01 (可选)">
+                        </div>
+                        <div class="form-group">
+                            <label>分镜过滤</label>
+                            <input type="text" v-model="generateConfig.audio.shotFilter" placeholder="EP01_SQ01 (可选)">
+                        </div>
+                        <div class="form-group">
+                            <label>生成器类型</label>
+                            <select v-model="generateConfig.audio.generatorType">
+                                <option value="volcengine">火山引擎</option>
+                                <option value="comfyui">ComfyUI (Qwen3-TTS)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" v-if="generateConfig.audio.generatorType === 'comfyui'">
+                            <label>ComfyUI服务器</label>
+                            <input type="text" v-model="generateConfig.audio.comfyuiServer" placeholder="127.0.0.1:8188">
+                        </div>
+                        <div class="form-group" v-if="generateConfig.audio.generatorType === 'comfyui'">
+                            <label>工作流文件路径（可选）</label>
+                            <input type="text" v-model="generateConfig.audio.workflowPath" placeholder="Qwen3-TTSVoiceCloneAPI.json">
+                        </div>
+                        <button class="btn btn-primary" @click="generateAudio">开始生成音频</button>
+                    </div>
+                </div>
+
+                <!-- 任务管理标签页 -->
+                <div v-if="activeTab === 'tasks'" class="tab-content">
+                    <div class="tasks-header">
+                        <h2>任务列表</h2>
+                        <button class="btn btn-secondary" @click="loadTasks">刷新</button>
+                    </div>
+                    <div class="tasks-list">
+                        <div v-if="tasks.length === 0" class="tasks-empty">
+                            <p>暂无任务</p>
+                            <p class="tasks-empty-hint">生成图像、视频或音频后，任务会显示在这里</p>
+                        </div>
+                        <div v-for="task in tasks" :key="task.id" class="task-item" :class="task.status">
+                            <div class="task-header">
+                                <span class="task-type">{{ task.type }}</span>
+                                <span class="task-status">{{ task.status }}</span>
+                                <span class="task-progress">{{ task.progress }}%</span>
+                            </div>
+                            <div class="task-info">
+                                <div>创建时间: {{ task.created_at }}</div>
+                                <div v-if="task.error" class="task-error">错误: {{ task.error }}</div>
+                                <div v-if="task.result" class="task-result">
+                                    结果: {{ task.result.count || '完成' }} 项
+                                </div>
+                            </div>
+                            <div class="task-progress-bar">
+                                <div class="progress-fill" :style="{ width: task.progress + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/handsontable@latest/dist/handsontable.full.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+

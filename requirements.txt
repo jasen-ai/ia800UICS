@@ -1,0 +1,9 @@
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+pandas>=2.0.0
+openpyxl>=3.1.0
+passlib[bcrypt]>=1.7.4
+# bcrypt>=4.0 会对超过72字节的密码抛错，且与 passlib 存在兼容性问题，新环境固定到 4.0 以下
+bcrypt>=3.2.0,<4.0.0
+python-jose[cryptography]>=3.3.0

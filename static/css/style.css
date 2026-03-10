@@ -1,0 +1,388 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+/* 登录界面 */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.login-box {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-box h1 {
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: #333;
+}
+
+.register-box {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #eee;
+}
+
+.register-box h2 {
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-right: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.btn-primary {
+    background-color: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #5568d3;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.error-message {
+    color: #dc3545;
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: #f8d7da;
+    border-radius: 4px;
+}
+
+/* 主界面 */
+.main-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    background-color: #fff;
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-info {
+    color: #666;
+}
+
+.content {
+    flex: 1;
+    padding: 2rem;
+}
+
+/* 标签页 */
+.tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #ddd;
+}
+
+.tab-button {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s;
+}
+
+.tab-button:hover {
+    color: #667eea;
+}
+
+.tab-button.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+}
+
+.tab-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Excel控制 */
+.excel-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: center;
+}
+
+.excel-controls select {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#excel-container {
+    margin-top: 1rem;
+}
+
+/* 生成配置 */
+.generate-section {
+    margin-bottom: 2rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid #eee;
+}
+
+.generate-section:last-child {
+    border-bottom: none;
+}
+
+.generate-section h2 {
+    margin-bottom: 1rem;
+    color: #333;
+}
+
+.generate-section .section-desc {
+    display: block;
+    margin: 0 0 1rem 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #555;
+    background: #f8f9fa;
+    border-left: 3px solid #667eea;
+    border-radius: 4px;
+}
+
+/* 任务管理 */
+.tasks-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.tasks-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+}
+
+.tasks-empty p {
+    margin: 10px 0;
+}
+
+.tasks-empty-hint {
+    font-size: 0.9em;
+    color: #999;
+}
+
+.tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.task-item {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 4px;
+    border-left: 4px solid #667eea;
+}
+
+.task-item.pending {
+    border-left-color: #ffc107;
+}
+
+.task-item.running {
+    border-left-color: #17a2b8;
+}
+
+.task-item.completed {
+    border-left-color: #28a745;
+}
+
+.task-item.failed {
+    border-left-color: #dc3545;
+}
+
+.task-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.task-type {
+    text-transform: uppercase;
+    color: #667eea;
+}
+
+.task-status {
+    text-transform: capitalize;
+}
+
+.task-progress {
+    margin-left: auto;
+}
+
+.task-info {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.task-error {
+    color: #dc3545;
+    margin-top: 0.5rem;
+}
+
+.task-result {
+    color: #28a745;
+    margin-top: 0.5rem;
+}
+
+.task-progress-bar {
+    height: 4px;
+    background-color: #e9ecef;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #667eea;
+    transition: width 0.3s;
+}
+
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+/* Handsontable样式覆盖 */
+.handsontable {
+    font-size: 14px;
+}
+
+.handsontable th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+/* 预览单元格样式 */
+.handsontable td {
+    vertical-align: middle;
+}
+
+.handsontable td img,
+.handsontable td video {
+    display: block;
+    margin: 0 auto;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.handsontable td img:hover {
+    transform: scale(1.05);
+    transition: transform 0.2s;
+    cursor: pointer;
+}
+
+/* 固定列样式 */
+.handsontable .ht_clone_left th,
+.handsontable .ht_clone_left td {
+    background-color: #f5f7fa !important;
+    border-right: 2px solid #d0d7de !important;
+    font-weight: 500;
+    position: sticky;
+    z-index: 10;
+}
+
+.handsontable .ht_clone_left th {
+    background-color: #e9ecef !important;
+    font-weight: 600;
+    z-index: 11;
+}
+
