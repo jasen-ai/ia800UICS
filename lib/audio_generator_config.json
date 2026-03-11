@@ -1,0 +1,6 @@
+{
+  "appid": "YOUR_APPID_HERE",
+  "access_token": "YOUR_ACCESS_TOKEN_HERE",
+  "endpoint": "wss://openspeech.bytedance.com/api/v1/tts/ws_binary"
+}
+

@@ -1,0 +1,105 @@
+{
+  "6": {
+    "inputs": {
+      "audio": "ComfyUI_00008_.mp3",
+      "audioUI": ""
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "8": {
+    "inputs": {
+      "filename_prefix": "audio/ComfyUI",
+      "audioUI": "",
+      "audio": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "SaveAudio",
+    "_meta": {
+      "title": "Save Audio (FLAC)"
+    }
+  },
+  "33": {
+    "inputs": {
+      "model_repo": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+      "download_source": "ModelScope",
+      "precision": "bf16",
+      "attn_mode": "sdpa",
+      "auto_download": true
+    },
+    "class_type": "Qwen3TTSLoader",
+    "_meta": {
+      "title": "Qwen3-TTS Loader 🚀"
+    }
+  },
+  "35": {
+    "inputs": {
+      "x_vector_only": true,
+      "ref_text": [
+        "40",
+        0
+      ],
+      "model_obj": [
+        "33",
+        0
+      ],
+      "ref_audio": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "Qwen3TTSVoiceClonePrompt",
+    "_meta": {
+      "title": "Qwen3-TTS Clone Prompt 🧠"
+    }
+  },
+  "39": {
+    "inputs": {
+      "target_text": "我想用这个声音说这句话。[pause:1.5] 真的很有趣！",
+      "target_language": "Chinese",
+      "output_mode": "Concatenate (Merge)",
+      "seed": 627785499203551,
+      "ref_text": "",
+      "instruct": "",
+      "enable_x_vector_instant": false,
+      "max_new_tokens": 2048,
+      "temperature": 0.9,
+      "top_p": 1,
+      "top_k": 50,
+      "repetition_penalty": 1.05,
+      "subtalker_temperature": 0.9,
+      "subtalker_top_p": 1,
+      "subtalker_top_k": 50,
+      "model_obj": [
+        "33",
+        0
+      ],
+      "voice_clone_prompt": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "Qwen3TTSVoiceClone",
+    "_meta": {
+      "title": "Qwen3-TTS Voice Clone 👥"
+    }
+  },
+  "40": {
+    "inputs": {
+      "model_id": "iic/SenseVoiceSmall",
+      "language": "auto",
+      "audio": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "Qwen3TTSSenseVoiceASR",
+    "_meta": {
+      "title": "Qwen3-TTS SenseVoice ASR 🗣️"
+    }
+  }
+}
