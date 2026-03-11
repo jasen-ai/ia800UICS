@@ -1,3 +1,19 @@
+# Copyright (c) 2026 jasen chen. All rights reserved.
+#
+# Licensed under the MIT License (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://opensource.org/licenses/MIT
+#
+# Project Repository: https://github.com/jasen-ai/ia800UICS
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 自动剪辑程序 - 根据Excel剪辑汇总数据创建剪辑项目
 支持导出到剪映、FCPXML、EDL等格式，以及直接导出影片
