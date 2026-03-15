@@ -1023,6 +1023,7 @@ def batch_generate_audio_from_excel_data(
     config_path: Optional[str] = None,
     emotion: Optional[str] = None,
     emotion_map: Optional[Dict[str, str]] = None,
+    provider_profile: Optional[str] = None,
     **generator_kwargs
 ) -> List[Dict[str, Any]]:
     """
@@ -1032,6 +1033,7 @@ def batch_generate_audio_from_excel_data(
         audio_tracks: 音频轨道列表（AudioTrack对象列表）
         characters: 角色列表（可选，用于查找角色的音频id）
         generator_type: 生成器类型（"volcengine" 或 "comfyui"）
+        provider_profile: 可选，generation_framework 音频 profile_id（如 volcengine.default、comfyui.default）
         output_dir: 输出目录
         encoding: 音频编码格式
         episode_filter: 剧集ID过滤器（可选）
@@ -1046,13 +1048,37 @@ def batch_generate_audio_from_excel_data(
     Returns:
         生成结果列表
     """
-    # 创建生成器
-    generator = create_audio_generator(
-        generator_type=generator_type,
-        config_path=config_path,
-        output_dir=output_dir,
-        **generator_kwargs
-    )
+    # 创建生成器（优先走 generation_framework）
+    try:
+        from generation_framework import (
+            create_audio_generator_by_profile,
+            resolve_audio_profile_id,
+        )
+
+        pid = resolve_audio_profile_id(provider_profile, generator_type)
+        generator = create_audio_generator_by_profile(
+            pid,
+            comfyui_server=generator_kwargs.get("comfyui_server", generator_kwargs.get("server_address", "127.0.0.1:8188")),
+            config_path=config_path,
+            workflow_path=generator_kwargs.get("workflow_path"),
+            output_dir=output_dir,
+            **{k: v for k, v in generator_kwargs.items() if k not in ("comfyui_server", "server_address", "workflow_path")}
+        )
+    except ImportError:
+        generator = create_audio_generator(
+            generator_type=generator_type,
+            config_path=config_path,
+            output_dir=output_dir,
+            **generator_kwargs
+        )
+    except ValueError as e:
+        logger.warning("%s，回退 create_audio_generator", e)
+        generator = create_audio_generator(
+            generator_type=generator_type,
+            config_path=config_path,
+            output_dir=output_dir,
+            **generator_kwargs
+        )
     
     # 创建批量生成器
     batch_generator = BatchAudioGenerator(

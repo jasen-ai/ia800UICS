@@ -564,6 +564,8 @@ class ExcelDataReader:
         scene_image_dir: Optional[str] = None,
         character_image_dir: Optional[str] = None,
         reference_image_dir: Optional[str] = None,
+        provider_profile: Optional[str] = None,
+        txt2img_workflow_path: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         根据图像汇总工作表中的提示词批量生成图像。
@@ -588,6 +590,8 @@ class ExcelDataReader:
             scene_image_dir: 场景图目录，下存 {场景id}.png（可选）
             character_image_dir: 角色图目录，下存 {角色id}.png（可选）
             reference_image_dir: 图像汇总「参考图」为相对路径时的基准目录（可选，默认用 output_dir）
+            provider_profile: 可选，generation_framework 图像 profile_id
+            txt2img_workflow_path: 可选，ComfyUI 文生图工作流 JSON 路径
             
         Returns:
             生成结果列表
@@ -610,6 +614,8 @@ class ExcelDataReader:
             height=height,
             episode_filter=episode_filter,
             generator_type=generator_type,
+            provider_profile=provider_profile,
+            txt2img_workflow_path=txt2img_workflow_path,
             characters=self.characters,
             audio_tracks=self.audio_tracks,
             enable_prompt_expansion=enable_prompt_expansion,
@@ -640,7 +646,8 @@ class ExcelDataReader:
         enable_prompt_expansion: bool = True,
         sora_api_key: Optional[str] = None,
         sora_host: str = "https://grsai.dakka.com.cn",
-        sora_config_path: Optional[str] = None
+        sora_config_path: Optional[str] = None,
+        provider_profile: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         根据图像汇总工作表中的视频提示词批量生成视频
@@ -666,6 +673,7 @@ class ExcelDataReader:
             sora_api_key: Sora API密钥（用于sora类型，如果为None则从配置文件读取）
             sora_host: Sora API服务器地址（用于sora类型）
             sora_config_path: Sora配置文件路径（用于sora类型）
+            provider_profile: 可选，generation_framework 视频 profile_id
             
         Returns:
             生成结果列表
@@ -696,7 +704,8 @@ class ExcelDataReader:
             enable_prompt_expansion=enable_prompt_expansion,
             sora_api_key=sora_api_key,
             sora_host=sora_host,
-            sora_config_path=sora_config_path
+            sora_config_path=sora_config_path,
+            provider_profile=provider_profile,
         )
     
     def batch_generate_audio_from_tracks(
@@ -709,6 +718,7 @@ class ExcelDataReader:
         config_path: Optional[str] = None,
         emotion: Optional[str] = None,
         emotion_map: Optional[Dict[str, str]] = None,
+        provider_profile: Optional[str] = None,
         **generator_kwargs
     ) -> List[Dict[str, Any]]:
         """
@@ -723,7 +733,8 @@ class ExcelDataReader:
             config_path: 配置文件路径（可选）
             emotion: 默认音色情感（可选）
             emotion_map: 情感映射字典（可选，key为角色名，value为对应的emotion值）
-            **generator_kwargs: 生成器特定参数（如appid, access_token等，优先级高于配置文件）
+            provider_profile: 可选，generation_framework 音频 profile_id
+            **generator_kwargs: 生成器特定参数（如appid, access_token, comfyui_server, workflow_path等）
             
         Returns:
             生成结果列表
@@ -743,6 +754,7 @@ class ExcelDataReader:
             config_path=config_path,
             emotion=emotion,
             emotion_map=emotion_map,
+            provider_profile=provider_profile,
             **generator_kwargs
         )
 

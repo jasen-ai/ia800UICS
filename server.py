@@ -62,6 +62,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+# 预览查找/Excel读取的详细日志默认关闭，便于调试其他功能；需要时设置环境变量 UICS_PREVIEW_LOG=1 开启
+_PREVIEW_LOG_VERBOSE = os.environ.get('UICS_PREVIEW_LOG', '').strip().lower() in ('1', 'true', 'yes')
+preview_logger = logging.getLogger('uics.preview')
+preview_logger.setLevel(logging.INFO if _PREVIEW_LOG_VERBOSE else logging.WARNING)
 
 # 初始化FastAPI应用
 app = FastAPI(title="UICS API", description="多用户Excel编辑与媒体生成系统", version="1.0.0")
@@ -318,12 +322,15 @@ class GenerateImageRequest(BaseModel):
     output_dir: str = "./output"
     episode_filter: Optional[str] = None
     shot_filter: Optional[str] = None  # 添加分镜过滤参数
-    generator_type: str = "comfyui"  # 生成器类型：comfyui 或 nanobanana
+    generator_type: str = "comfyui"  # 生成器类型：comfyui 或 nanobanana（与 provider_profile 二选一或配合使用）
     comfyui_server: str = "127.0.0.1:8188"
     generate_reference: bool = True
     generate_first_frame: bool = False  # 添加首帧生成参数
     generate_last_frame: bool = False  # 添加末帧生成参数
     enable_prompt_expansion: bool = True
+    # 扩展：generation_framework 画像（见 GET /api/generation/profiles）
+    provider_profile: Optional[str] = None  # 如 comfyui.z_image_qwen、nanobanana.default
+    txt2img_workflow_path: Optional[str] = None  # ComfyUI 文生图工作流 JSON 路径（可选）
 
 class GenerateVideoRequest(BaseModel):
     output_dir: str = "./output"
@@ -332,6 +339,8 @@ class GenerateVideoRequest(BaseModel):
     generator_type: str = "comfyui"
     comfyui_server: str = "127.0.0.1:8188"
     enable_prompt_expansion: bool = True
+    workflow_path: Optional[str] = None  # ComfyUI 图生视频工作流 JSON（可选）
+    provider_profile: Optional[str] = None  # 如 comfyui.default、sora.default
 
 class GenerateAudioRequest(BaseModel):
     output_dir: str = "./output"
@@ -341,6 +350,7 @@ class GenerateAudioRequest(BaseModel):
     config_path: Optional[str] = None
     comfyui_server: str = "127.0.0.1:8188"  # ComfyUI服务器地址（用于comfyui类型）
     workflow_path: Optional[str] = None  # 工作流文件路径（用于comfyui类型，默认: Qwen3-TTSVoiceCloneAPI.json）
+    provider_profile: Optional[str] = None  # 如 volcengine.default、comfyui.default
 
 
 # ==================== 认证依赖 ====================
@@ -594,42 +604,42 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
         '视频预览': None
     }
     
-    logger.info(f"[预览查找] 开始查找分镜 {shot_id} 的预览文件")
-    logger.info(f"[预览查找] 输出目录: {output_dir}")
-    logger.info(f"[预览查找] 输出目录存在: {os.path.exists(output_dir)}")
+    preview_logger.info(f"[预览查找] 开始查找分镜 {shot_id} 的预览文件")
+    preview_logger.info(f"[预览查找] 输出目录: {output_dir}")
+    preview_logger.info(f"[预览查找] 输出目录存在: {os.path.exists(output_dir)}")
     
     if not os.path.exists(output_dir):
-        logger.warning(f"[预览查找] 输出目录不存在: {output_dir}")
+        preview_logger.warning(f"[预览查找] 输出目录不存在: {output_dir}")
         return previews
     
     if not shot_id or shot_id == 'nan' or shot_id.strip() == '':
-        logger.warning(f"[预览查找] 无效的分镜号: {shot_id}")
+        preview_logger.warning(f"[预览查找] 无效的分镜号: {shot_id}")
         return previews
     
     shot_id = shot_id.strip()
-    logger.info(f"[预览查找] 查找分镜号: {shot_id}")
-    logger.info(f"[预览查找] 输出目录绝对路径: {os.path.abspath(output_dir)}")
+    preview_logger.info(f"[预览查找] 查找分镜号: {shot_id}")
+    preview_logger.info(f"[预览查找] 输出目录绝对路径: {os.path.abspath(output_dir)}")
     
     # 列出输出目录中的所有文件（用于调试）
     try:
         all_files = os.listdir(output_dir)
         matching_files = [f for f in all_files if shot_id in f]
-        logger.info(f"[预览查找] 输出目录总文件数: {len(all_files)}")
-        logger.info(f"[预览查找] 包含分镜号 '{shot_id}' 的文件数: {len(matching_files)}")
+        preview_logger.info(f"[预览查找] 输出目录总文件数: {len(all_files)}")
+        preview_logger.info(f"[预览查找] 包含分镜号 '{shot_id}' 的文件数: {len(matching_files)}")
         if matching_files:
-            logger.info(f"[预览查找] 包含分镜号的所有文件:")
+            preview_logger.info(f"[预览查找] 包含分镜号的所有文件:")
             for f in matching_files:
                 full_path = os.path.join(output_dir, f)
                 exists = os.path.exists(full_path)
                 size = os.path.getsize(full_path) if exists else 0
-                logger.info(f"[预览查找]   - {f} (存在: {exists}, 大小: {size} bytes, 完整路径: {os.path.abspath(full_path)})")
+                preview_logger.info(f"[预览查找]   - {f} (存在: {exists}, 大小: {size} bytes, 完整路径: {os.path.abspath(full_path)})")
         else:
-            logger.warning(f"[预览查找] 未找到包含分镜号 '{shot_id}' 的文件")
-            logger.info(f"[预览查找] 输出目录中的前20个文件:")
+            preview_logger.warning(f"[预览查找] 未找到包含分镜号 '{shot_id}' 的文件")
+            preview_logger.info(f"[预览查找] 输出目录中的前20个文件:")
             for f in all_files[:20]:
-                logger.info(f"[预览查找]   - {f}")
+                preview_logger.info(f"[预览查找]   - {f}")
     except Exception as e:
-        logger.error(f"[预览查找] 列出目录文件失败: {e}", exc_info=True)
+        preview_logger.error(f"[预览查找] 列出目录文件失败: {e}", exc_info=True)
     
     # 支持的图片扩展名
     image_extensions = ['png', 'jpg', 'jpeg', 'webp']
@@ -637,12 +647,12 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
     video_extensions = ['mp4', 'webm', 'webp']
     
     # 查找参考图（图像预览）- 格式: {分镜号}_ref_*.{ext}
-    logger.info(f"[预览查找] ========== 查找参考图 ==========")
+    preview_logger.info(f"[预览查找] ========== 查找参考图 ==========")
     for ext in image_extensions:
         pattern = os.path.join(output_dir, f"{shot_id}_ref_*.{ext}")
-        logger.info(f"[预览查找] 参考图模式: {pattern}")
+        preview_logger.info(f"[预览查找] 参考图模式: {pattern}")
         matches = glob.glob(pattern)
-        logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
+        preview_logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
         if matches:
             # 按文件修改时间排序，选择最新的文件
             matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -652,27 +662,27 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
                 file_exists = os.path.exists(full_path)
                 file_size = os.path.getsize(full_path) if file_exists else 0
                 file_mtime = os.path.getmtime(full_path) if file_exists else 0
-                logger.info(f"[预览查找]   匹配文件 #{i+1}:")
-                logger.info(f"[预览查找]     完整路径: {full_path}")
-                logger.info(f"[预览查找]     文件名: {filename}")
-                logger.info(f"[预览查找]     文件存在: {file_exists}")
-                logger.info(f"[预览查找]     文件大小: {file_size} bytes")
-                logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
+                preview_logger.info(f"[预览查找]   匹配文件 #{i+1}:")
+                preview_logger.info(f"[预览查找]     完整路径: {full_path}")
+                preview_logger.info(f"[预览查找]     文件名: {filename}")
+                preview_logger.info(f"[预览查找]     文件存在: {file_exists}")
+                preview_logger.info(f"[预览查找]     文件大小: {file_size} bytes")
+                preview_logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
             previews['图像预览'] = os.path.basename(matches[0])
-            logger.info(f"[预览查找] ✓ 选择参考图: {previews['图像预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
+            preview_logger.info(f"[预览查找] ✓ 选择参考图: {previews['图像预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
             break
         else:
-            logger.info(f"[预览查找]   未找到匹配文件")
+            preview_logger.info(f"[预览查找]   未找到匹配文件")
     if not previews['图像预览']:
-        logger.warning(f"[预览查找] ✗ 未找到参考图")
+        preview_logger.warning(f"[预览查找] ✗ 未找到参考图")
     
     # 查找首帧 - 格式: {分镜号}_first_*.{ext}
-    logger.info(f"[预览查找] ========== 查找首帧 ==========")
+    preview_logger.info(f"[预览查找] ========== 查找首帧 ==========")
     for ext in image_extensions:
         pattern = os.path.join(output_dir, f"{shot_id}_first_*.{ext}")
-        logger.info(f"[预览查找] 首帧模式: {pattern}")
+        preview_logger.info(f"[预览查找] 首帧模式: {pattern}")
         matches = glob.glob(pattern)
-        logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
+        preview_logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
         if matches:
             # 按文件修改时间排序，选择最新的文件
             matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -682,27 +692,27 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
                 file_exists = os.path.exists(full_path)
                 file_size = os.path.getsize(full_path) if file_exists else 0
                 file_mtime = os.path.getmtime(full_path) if file_exists else 0
-                logger.info(f"[预览查找]   匹配文件 #{i+1}:")
-                logger.info(f"[预览查找]     完整路径: {full_path}")
-                logger.info(f"[预览查找]     文件名: {filename}")
-                logger.info(f"[预览查找]     文件存在: {file_exists}")
-                logger.info(f"[预览查找]     文件大小: {file_size} bytes")
-                logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
+                preview_logger.info(f"[预览查找]   匹配文件 #{i+1}:")
+                preview_logger.info(f"[预览查找]     完整路径: {full_path}")
+                preview_logger.info(f"[预览查找]     文件名: {filename}")
+                preview_logger.info(f"[预览查找]     文件存在: {file_exists}")
+                preview_logger.info(f"[预览查找]     文件大小: {file_size} bytes")
+                preview_logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
             previews['首帧预览'] = os.path.basename(matches[0])
-            logger.info(f"[预览查找] ✓ 选择首帧: {previews['首帧预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
+            preview_logger.info(f"[预览查找] ✓ 选择首帧: {previews['首帧预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
             break
         else:
-            logger.info(f"[预览查找]   未找到匹配文件")
+            preview_logger.info(f"[预览查找]   未找到匹配文件")
     if not previews['首帧预览']:
-        logger.warning(f"[预览查找] ✗ 未找到首帧")
+        preview_logger.warning(f"[预览查找] ✗ 未找到首帧")
     
     # 查找末帧 - 格式: {分镜号}_last_*.{ext}
-    logger.info(f"[预览查找] ========== 查找末帧 ==========")
+    preview_logger.info(f"[预览查找] ========== 查找末帧 ==========")
     for ext in image_extensions:
         pattern = os.path.join(output_dir, f"{shot_id}_last_*.{ext}")
-        logger.info(f"[预览查找] 末帧模式: {pattern}")
+        preview_logger.info(f"[预览查找] 末帧模式: {pattern}")
         matches = glob.glob(pattern)
-        logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
+        preview_logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
         if matches:
             # 按文件修改时间排序，选择最新的文件
             matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -712,27 +722,27 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
                 file_exists = os.path.exists(full_path)
                 file_size = os.path.getsize(full_path) if file_exists else 0
                 file_mtime = os.path.getmtime(full_path) if file_exists else 0
-                logger.info(f"[预览查找]   匹配文件 #{i+1}:")
-                logger.info(f"[预览查找]     完整路径: {full_path}")
-                logger.info(f"[预览查找]     文件名: {filename}")
-                logger.info(f"[预览查找]     文件存在: {file_exists}")
-                logger.info(f"[预览查找]     文件大小: {file_size} bytes")
-                logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
+                preview_logger.info(f"[预览查找]   匹配文件 #{i+1}:")
+                preview_logger.info(f"[预览查找]     完整路径: {full_path}")
+                preview_logger.info(f"[预览查找]     文件名: {filename}")
+                preview_logger.info(f"[预览查找]     文件存在: {file_exists}")
+                preview_logger.info(f"[预览查找]     文件大小: {file_size} bytes")
+                preview_logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
             previews['末帧预览'] = os.path.basename(matches[0])
-            logger.info(f"[预览查找] ✓ 选择末帧: {previews['末帧预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
+            preview_logger.info(f"[预览查找] ✓ 选择末帧: {previews['末帧预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
             break
         else:
-            logger.info(f"[预览查找]   未找到匹配文件")
+            preview_logger.info(f"[预览查找]   未找到匹配文件")
     if not previews['末帧预览']:
-        logger.warning(f"[预览查找] ✗ 未找到末帧")
+        preview_logger.warning(f"[预览查找] ✗ 未找到末帧")
     
     # 查找视频 - 格式: {分镜号}_video_*.{ext}
-    logger.info(f"[预览查找] ========== 查找视频 ==========")
+    preview_logger.info(f"[预览查找] ========== 查找视频 ==========")
     for ext in video_extensions:
         pattern = os.path.join(output_dir, f"{shot_id}_video_*.{ext}")
-        logger.info(f"[预览查找] 视频模式: {pattern}")
+        preview_logger.info(f"[预览查找] 视频模式: {pattern}")
         matches = glob.glob(pattern)
-        logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
+        preview_logger.info(f"[预览查找] 匹配到的文件数量: {len(matches)}")
         if matches:
             # 按文件修改时间排序，选择最新的文件
             matches.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -742,21 +752,21 @@ def find_preview_files(shot_id: str, output_dir: str) -> Dict[str, Optional[str]
                 file_exists = os.path.exists(full_path)
                 file_size = os.path.getsize(full_path) if file_exists else 0
                 file_mtime = os.path.getmtime(full_path) if file_exists else 0
-                logger.info(f"[预览查找]   匹配文件 #{i+1}:")
-                logger.info(f"[预览查找]     完整路径: {full_path}")
-                logger.info(f"[预览查找]     文件名: {filename}")
-                logger.info(f"[预览查找]     文件存在: {file_exists}")
-                logger.info(f"[预览查找]     文件大小: {file_size} bytes")
-                logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
+                preview_logger.info(f"[预览查找]   匹配文件 #{i+1}:")
+                preview_logger.info(f"[预览查找]     完整路径: {full_path}")
+                preview_logger.info(f"[预览查找]     文件名: {filename}")
+                preview_logger.info(f"[预览查找]     文件存在: {file_exists}")
+                preview_logger.info(f"[预览查找]     文件大小: {file_size} bytes")
+                preview_logger.info(f"[预览查找]     修改时间: {datetime.fromtimestamp(file_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
             previews['视频预览'] = os.path.basename(matches[0])
-            logger.info(f"[预览查找] ✓ 选择视频: {previews['视频预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
+            preview_logger.info(f"[预览查找] ✓ 选择视频: {previews['视频预览']} (完整路径: {os.path.abspath(matches[0])}, 修改时间: {datetime.fromtimestamp(os.path.getmtime(matches[0])).strftime('%Y-%m-%d %H:%M:%S')})")
             break
         else:
-            logger.info(f"[预览查找]   未找到匹配文件")
+            preview_logger.info(f"[预览查找]   未找到匹配文件")
     if not previews['视频预览']:
-        logger.warning(f"[预览查找] ✗ 未找到视频")
+        preview_logger.warning(f"[预览查找] ✗ 未找到视频")
     
-    logger.info(f"[预览查找] 查找结果: {previews}")
+    preview_logger.info(f"[预览查找] 查找结果: {previews}")
     return previews
 
 
@@ -790,33 +800,33 @@ async def read_excel(current_user: dict = Depends(get_current_user)):
                         df[col] = df[col].astype(str)
                 
                 # 为每一行查找预览文件
-                logger.info(f"[Excel读取] ========== 开始为图像汇总工作表查找预览文件 ==========")
-                logger.info(f"[Excel读取] 工作表总行数: {len(df)}")
-                logger.info(f"[Excel读取] 输出目录: {OUTPUT_FOLDER}")
-                logger.info(f"[Excel读取] 输出目录绝对路径: {os.path.abspath(OUTPUT_FOLDER)}")
-                logger.info(f"[Excel读取] 输出目录存在: {os.path.exists(OUTPUT_FOLDER)}")
+                preview_logger.info(f"[Excel读取] ========== 开始为图像汇总工作表查找预览文件 ==========")
+                preview_logger.info(f"[Excel读取] 工作表总行数: {len(df)}")
+                preview_logger.info(f"[Excel读取] 输出目录: {OUTPUT_FOLDER}")
+                preview_logger.info(f"[Excel读取] 输出目录绝对路径: {os.path.abspath(OUTPUT_FOLDER)}")
+                preview_logger.info(f"[Excel读取] 输出目录存在: {os.path.exists(OUTPUT_FOLDER)}")
                 
                 for idx, row in df.iterrows():
                     shot_id_raw = row.get('分镜号', '')
                     shot_id = str(shot_id_raw).strip() if shot_id_raw else ''
-                    logger.info(f"[Excel读取] ---------- 处理行 {idx} ----------")
-                    logger.info(f"[Excel读取] 原始分镜号值: {repr(shot_id_raw)}")
-                    logger.info(f"[Excel读取] 处理后分镜号: {repr(shot_id)}")
+                    preview_logger.info(f"[Excel读取] ---------- 处理行 {idx} ----------")
+                    preview_logger.info(f"[Excel读取] 原始分镜号值: {repr(shot_id_raw)}")
+                    preview_logger.info(f"[Excel读取] 处理后分镜号: {repr(shot_id)}")
                     
                     if shot_id and shot_id != 'nan' and shot_id:
                         previews = find_preview_files(shot_id, OUTPUT_FOLDER)
                         found_count = sum(1 for v in previews.values() if v)
-                        logger.info(f"[Excel读取] 行 {idx}, 分镜号 '{shot_id}': 找到 {found_count} 个预览文件")
-                        logger.info(f"[Excel读取] 预览结果详情:")
+                        preview_logger.info(f"[Excel读取] 行 {idx}, 分镜号 '{shot_id}': 找到 {found_count} 个预览文件")
+                        preview_logger.info(f"[Excel读取] 预览结果详情:")
                         for col, value in previews.items():
-                            logger.info(f"[Excel读取]   {col}: {repr(value)}")
+                            preview_logger.info(f"[Excel读取]   {col}: {repr(value)}")
                         
                         for col in preview_columns:
                             preview_value = previews[col] if previews[col] else ''
                             df.at[idx, col] = str(preview_value)
-                            logger.info(f"[Excel读取] 设置列 '{col}' = {repr(preview_value)}")
+                            preview_logger.info(f"[Excel读取] 设置列 '{col}' = {repr(preview_value)}")
                     else:
-                        logger.warning(f"[Excel读取] 行 {idx}: 跳过（分镜号为空或无效: {repr(shot_id)}）")
+                        preview_logger.warning(f"[Excel读取] 行 {idx}: 跳过（分镜号为空或无效: {repr(shot_id)}）")
             
             # 将NaN转换为None，然后转换为列表
             data[sheet_name] = df.fillna('').to_dict('records')
@@ -1021,6 +1031,62 @@ async def delete_row(request: ExcelDeleteRowRequest, current_user: dict = Depend
 
 # ==================== 生成任务相关API ====================
 
+@app.get("/api/generation/profiles")
+async def list_generation_profiles(current_user: dict = Depends(get_current_user)):
+    """列出可用的文生图/图生图/图生视频 provider_profile（供扩展与前端选择）。"""
+    try:
+        sys.path.insert(0, _LIB_DIR if os.path.isdir(_LIB_DIR) else _PROJECT_ROOT)
+        from generation_framework import list_image_profiles, list_video_profiles, list_audio_profiles, Capability
+
+        def cap_str(c) -> List[str]:
+            out = []
+            if c & Capability.TEXT_TO_IMAGE:
+                out.append("text2img")
+            if c & Capability.IMAGE_TO_IMAGE:
+                out.append("img2img")
+            if c & Capability.IMAGE_TO_VIDEO:
+                out.append("i2v")
+            if c & Capability.TEXT_TO_AUDIO:
+                out.append("tts")
+            return out
+
+        return {
+            "image": [
+                {
+                    "id": p.id,
+                    "display_name": p.display_name,
+                    "vendor": p.vendor,
+                    "capabilities": cap_str(p.capabilities),
+                    "description": p.description,
+                }
+                for p in list_image_profiles()
+            ],
+            "video": [
+                {
+                    "id": p.id,
+                    "display_name": p.display_name,
+                    "vendor": p.vendor,
+                    "capabilities": cap_str(p.capabilities),
+                    "description": p.description,
+                }
+                for p in list_video_profiles()
+            ],
+            "audio": [
+                {
+                    "id": p.id,
+                    "display_name": p.display_name,
+                    "vendor": p.vendor,
+                    "capabilities": cap_str(p.capabilities),
+                    "description": p.description,
+                }
+                for p in list_audio_profiles()
+            ],
+        }
+    except Exception as e:
+        logger.warning("generation_framework 不可用: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
+
+
 @app.post("/api/generate/image")
 async def generate_image(request: GenerateImageRequest, current_user: dict = Depends(get_current_user)):
     """生成图片任务"""
@@ -1184,6 +1250,8 @@ def _generate_image_task(task_id: str, params: Dict):
                 comfyui_server=params.get('comfyui_server', '127.0.0.1:8188'),
                 episode_filter=params.get('episode_filter'),
                 generator_type=generator_type,
+                provider_profile=params.get('provider_profile'),
+                txt2img_workflow_path=params.get('txt2img_workflow_path'),
                 enable_prompt_expansion=params.get('enable_prompt_expansion', True),
                 characters=reader.characters,
                 audio_tracks=reader.audio_tracks,
@@ -1201,6 +1269,8 @@ def _generate_image_task(task_id: str, params: Dict):
                 comfyui_server=params.get('comfyui_server', '127.0.0.1:8188'),
                 episode_filter=params.get('episode_filter'),
                 generator_type=generator_type,
+                provider_profile=params.get('provider_profile'),
+                txt2img_workflow_path=params.get('txt2img_workflow_path'),
                 enable_prompt_expansion=params.get('enable_prompt_expansion', True),
                 scene_image_dir=scene_image_dir,
                 character_image_dir=character_image_dir,
@@ -1306,15 +1376,17 @@ def _generate_video_task(task_id: str, params: Dict):
             import video_generator as _vg
             workflow_path = os.path.join(os.path.dirname(_vg.__file__), DEFAULT_COMFYUI_VIDEO_WORKFLOW)
             logger.info(f"[生成任务] ComfyUI 图生视频使用工作流: {workflow_path}")
+        # 视频默认不扩展提示词，与 ComfyUI 界面行为一致，避免角色汇总中的「图像提示词/视觉特征」被追加导致多出额外元素（如龙）
         results = reader.batch_generate_videos_from_prompts(
             output_dir=output_dir,
             comfyui_server=params.get('comfyui_server', '127.0.0.1:8188'),
-            workflow_path=workflow_path,
+            workflow_path=params.get('workflow_path') or workflow_path,
             episode_filter=params.get('episode_filter'),
             shot_filter=params.get('shot_filter'),
             generator_type=generator_type,
-            enable_prompt_expansion=params.get('enable_prompt_expansion', True),
-            reference_image_dir=params.get('reference_image_dir') or output_dir
+            enable_prompt_expansion=params.get('enable_prompt_expansion', False),
+            reference_image_dir=params.get('reference_image_dir') or output_dir,
+            provider_profile=params.get('provider_profile'),
         )
         
         task_manager.update_task(task_id, status='completed', progress=100, result={
@@ -1373,19 +1445,19 @@ def _generate_audio_task(task_id: str, params: Dict):
         generator_type = params.get('generator_type', 'volcengine')
         logger.info(f"[生成任务] 生成器类型: {generator_type}")
         
-        # 生成音频
+        # 生成音频（支持 provider_profile 扩展）
         generator_kwargs = {}
         if generator_type == 'comfyui':
-            # ComfyUI特定参数
-            generator_kwargs['server_address'] = params.get('comfyui_server', '127.0.0.1:8188')
+            generator_kwargs['comfyui_server'] = params.get('comfyui_server', '127.0.0.1:8188')
             generator_kwargs['workflow_path'] = params.get('workflow_path')
-            logger.info(f"[生成任务] ComfyUI服务器: {generator_kwargs['server_address']}")
-            if generator_kwargs['workflow_path']:
+            logger.info(f"[生成任务] ComfyUI服务器: {generator_kwargs['comfyui_server']}")
+            if generator_kwargs.get('workflow_path'):
                 logger.info(f"[生成任务] 工作流文件: {generator_kwargs['workflow_path']}")
         
         results = reader.batch_generate_audio_from_tracks(
             output_dir=output_dir,
             generator_type=generator_type,
+            provider_profile=params.get('provider_profile'),
             episode_filter=params.get('episode_filter'),
             shot_filter=params.get('shot_filter'),
             config_path=params.get('config_path'),
@@ -1468,43 +1540,43 @@ async def get_preview(filename: str):
         abs_file_path = os.path.abspath(file_path)
         abs_output_folder = os.path.abspath(OUTPUT_FOLDER)
         
-        logger.info(f"[预览API] ========== 请求预览文件 ==========")
-        logger.info(f"[预览API] 原始文件名参数: {repr(filename)}")
-        logger.info(f"[预览API] 解码后文件名: {repr(decoded_filename)}")
-        logger.info(f"[预览API] 输出目录: {OUTPUT_FOLDER}")
-        logger.info(f"[预览API] 输出目录绝对路径: {abs_output_folder}")
-        logger.info(f"[预览API] 输出目录存在: {os.path.exists(OUTPUT_FOLDER)}")
-        logger.info(f"[预览API] 拼接的文件路径: {file_path}")
-        logger.info(f"[预览API] 文件绝对路径: {abs_file_path}")
-        logger.info(f"[预览API] 文件存在: {os.path.exists(file_path)}")
+        preview_logger.info(f"[预览API] ========== 请求预览文件 ==========")
+        preview_logger.info(f"[预览API] 原始文件名参数: {repr(filename)}")
+        preview_logger.info(f"[预览API] 解码后文件名: {repr(decoded_filename)}")
+        preview_logger.info(f"[预览API] 输出目录: {OUTPUT_FOLDER}")
+        preview_logger.info(f"[预览API] 输出目录绝对路径: {abs_output_folder}")
+        preview_logger.info(f"[预览API] 输出目录存在: {os.path.exists(OUTPUT_FOLDER)}")
+        preview_logger.info(f"[预览API] 拼接的文件路径: {file_path}")
+        preview_logger.info(f"[预览API] 文件绝对路径: {abs_file_path}")
+        preview_logger.info(f"[预览API] 文件存在: {os.path.exists(file_path)}")
         
         if os.path.exists(file_path):
             file_size = os.path.getsize(file_path)
-            logger.info(f"[预览API] ✓ 文件存在，大小: {file_size} bytes")
+            preview_logger.info(f"[预览API] ✓ 文件存在，大小: {file_size} bytes")
         else:
-            logger.warning(f"[预览API] ✗ 预览文件不存在: {abs_file_path}")
+            preview_logger.warning(f"[预览API] ✗ 预览文件不存在: {abs_file_path}")
             # 列出输出目录中的文件（用于调试）
             if os.path.exists(OUTPUT_FOLDER):
                 all_files = os.listdir(OUTPUT_FOLDER)
-                logger.info(f"[预览API] 输出目录总文件数: {len(all_files)}")
+                preview_logger.info(f"[预览API] 输出目录总文件数: {len(all_files)}")
                 
                 # 查找相似文件
                 shot_prefix = decoded_filename.split('_')[0] if '_' in decoded_filename else decoded_filename.split('.')[0]
                 similar_files = [f for f in all_files if shot_prefix in f]
-                logger.info(f"[预览API] 包含 '{shot_prefix}' 的文件数: {len(similar_files)}")
-                logger.info(f"[预览API] 相似文件列表:")
+                preview_logger.info(f"[预览API] 包含 '{shot_prefix}' 的文件数: {len(similar_files)}")
+                preview_logger.info(f"[预览API] 相似文件列表:")
                 for f in similar_files[:20]:  # 显示前20个
                     full_path = os.path.join(OUTPUT_FOLDER, f)
                     exists = os.path.exists(full_path)
                     size = os.path.getsize(full_path) if exists else 0
-                    logger.info(f"[预览API]   - {f} (存在: {exists}, 大小: {size} bytes)")
+                    preview_logger.info(f"[预览API]   - {f} (存在: {exists}, 大小: {size} bytes)")
                 
                 # 尝试直接匹配文件名（不区分大小写）
                 matching_files = [f for f in all_files if f.lower() == decoded_filename.lower()]
                 if matching_files:
-                    logger.info(f"[预览API] 找到大小写不同的匹配文件: {matching_files}")
+                    preview_logger.info(f"[预览API] 找到大小写不同的匹配文件: {matching_files}")
             else:
-                logger.error(f"[预览API] 输出目录不存在: {abs_output_folder}")
+                preview_logger.error(f"[预览API] 输出目录不存在: {abs_output_folder}")
             
             raise HTTPException(status_code=404, detail=f"文件不存在: {decoded_filename}")
         
@@ -1517,7 +1589,7 @@ async def get_preview(filename: str):
         elif ext in ['.mp4', '.webm']:
             media_type = f"video/{ext[1:]}"
         
-        logger.info(f"返回预览文件: {file_path}, 媒体类型: {media_type}")
+        preview_logger.info(f"返回预览文件: {file_path}, 媒体类型: {media_type}")
         
         from fastapi.responses import FileResponse
         preview_headers = {"Cache-Control": "no-cache, max-age=0"}

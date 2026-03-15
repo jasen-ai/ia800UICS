@@ -567,6 +567,8 @@ class ExcelDataReader:
         scene_image_dir: Optional[str] = None,
         character_image_dir: Optional[str] = None,
         reference_image_dir: Optional[str] = None,
+        provider_profile: Optional[str] = None,
+        txt2img_workflow_path: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         根据图像汇总工作表中的提示词批量生成图像。
@@ -611,6 +613,8 @@ class ExcelDataReader:
             scene_image_dir=_scene_dir,
             character_image_dir=_char_dir,
             reference_image_dir=_ref_dir,
+            provider_profile=provider_profile,
+            txt2img_workflow_path=txt2img_workflow_path,
         )
     
     def batch_generate_videos_from_prompts(
@@ -633,7 +637,8 @@ class ExcelDataReader:
         enable_prompt_expansion: bool = True,
         sora_api_key: Optional[str] = None,
         sora_host: str = "https://grsai.dakka.com.cn",
-        sora_config_path: Optional[str] = None
+        sora_config_path: Optional[str] = None,
+        provider_profile: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         根据图像汇总工作表中的视频提示词批量生成视频
@@ -687,7 +692,8 @@ class ExcelDataReader:
             enable_prompt_expansion=enable_prompt_expansion,
             sora_api_key=sora_api_key,
             sora_host=sora_host,
-            sora_config_path=sora_config_path
+            sora_config_path=sora_config_path,
+            provider_profile=provider_profile,
         )
     
     def batch_generate_audio_from_tracks(
@@ -700,6 +706,7 @@ class ExcelDataReader:
         config_path: Optional[str] = None,
         emotion: Optional[str] = None,
         emotion_map: Optional[Dict[str, str]] = None,
+        provider_profile: Optional[str] = None,
         **generator_kwargs
     ) -> List[Dict[str, Any]]:
         """
@@ -709,6 +716,7 @@ class ExcelDataReader:
             output_dir: 输出目录
             generator_type: 生成器类型（默认: "volcengine"）
             encoding: 音频编码格式（默认: "wav"）
+            provider_profile: 可选，generation_framework 音频 profile_id
             episode_filter: 只处理指定剧集（如: EP01），如果为None则处理所有剧集
             shot_filter: 只处理指定分镜（如: EP01_SQ01），如果为None则处理所有分镜
             config_path: 配置文件路径（可选）
@@ -734,6 +742,7 @@ class ExcelDataReader:
             config_path=config_path,
             emotion=emotion,
             emotion_map=emotion_map,
+            provider_profile=provider_profile,
             **generator_kwargs
         )
 

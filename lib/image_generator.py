@@ -244,12 +244,12 @@ def _resolve_reference_images_for_edit(
     reference_image_dir: Optional[str] = None,
 ) -> List[str]:
     """
-    按「参考图1=场景id图、参考图2=角色id图、参考图3=图像汇总参考图」解析 1～3 张参考图路径。
+    按「参考图1=场景id图、参考图2(及后续)=角色id图、最后=图像汇总参考图」解析 1～3 张参考图路径。
     文件从本地相应目录读取，生成时会上传至 ComfyUI。支持 .png / .jpg / .jpeg。
     
     - 参考图1: 图像汇总.场景名 -> 场景id -> {scene_image_dir}/{场景id}.png（或 .jpg）
-    - 参考图2: 图像汇总.角色 -> 角色id -> {character_image_dir}/{角色id}.png（或 .jpg）
-    - 参考图3: 图像汇总.参考图（路径或文件名，相对时用 reference_image_dir 拼接）
+    - 参考图2、3: 图像汇总.角色（支持多角色：逗号、顿号、分号、空格或换行分隔）-> 每个角色查角色id -> {character_image_dir}/{角色id}.png，依次填入，最多 2 张角色图
+    - 剩余空位: 图像汇总.参考图（路径或文件名，相对时用 reference_image_dir 拼接）
     
     Returns:
         存在的本地文件路径列表，长度为 1～3；这些路径会在调用工作流前上传至 ComfyUI。
@@ -287,28 +287,34 @@ def _resolve_reference_images_for_edit(
     else:
         logger.info(f"  [参考图1] 场景名为空或未配置场景目录，跳过")
 
-    # 参考图2：角色 -> 角色汇总查角色id，目录下支持 角色id 或 角色名 两种文件名
-    if role_name and str(role_name).strip() and character_image_dir:
-        char = next((c for c in characters if (c.get("角色名") if isinstance(c, dict) else getattr(c, "角色名", None)) == role_name), None)
-        if char is not None:
-            cid = _get_id_from_obj(char, "角色id")
-            name_str = str(role_name).strip()
-            bases = [str(cid)] if cid is not None else []
-            if name_str and name_str not in bases:
-                bases.append(name_str)
-            path = _find_image_by_bases(character_image_dir, bases)
-            if path:
-                result.append(path)
-                logger.info(f"  [参考图2] 角色={role_name} -> 支持 角色id/角色名 文件名 -> 找到: {path}")
+    # 参考图2、3：角色（支持多角色：逗号、顿号、分号、空格或换行分隔）-> 每个角色查角色id，依次加入，最多占 2 个空位（总参考图不超过 3 张）
+    if role_name is not None and str(role_name).strip() and character_image_dir:
+        role_raw = str(role_name).strip()
+        role_names = [p.strip() for p in re.split(r"[,，;；\s\r\n]+", role_raw) if p.strip()]
+        for rn in role_names:
+            if len(result) >= 3:
+                break
+            char = next((c for c in characters if (c.get("角色名") if isinstance(c, dict) else getattr(c, "角色名", None)) == rn), None)
+            if char is not None:
+                cid = _get_id_from_obj(char, "角色id")
+                bases = [str(cid)] if cid is not None else []
+                if rn and rn not in bases:
+                    bases.append(rn)
+                path = _find_image_by_bases(character_image_dir, bases)
+                if path:
+                    result.append(path)
+                    logger.info(f"  [参考图-角色] 角色={rn} -> 找到: {path}")
+                else:
+                    tried = "、".join(bases) if bases else "(无)"
+                    logger.info(f"  [参考图-角色] 角色={rn} -> 已尝试 [{tried}] 在 {character_image_dir} 下未找到，跳过")
             else:
-                tried = "、".join(bases) if bases else "(无)"
-                logger.info(f"  [参考图2] 角色={role_name} -> 已尝试 角色id/角色名 文件名: [{tried}] -> 在目录 {character_image_dir} 下未找到，跳过")
-        else:
-            logger.info(f"  [参考图2] 角色={role_name} 在角色汇总中未找到匹配项，跳过")
-    elif role_name and str(role_name).strip():
-        logger.info(f"  [参考图2] 角色={role_name} 有值但未配置 character_image_dir，跳过")
+                logger.info(f"  [参考图-角色] 角色={rn} 在角色汇总中未找到匹配项，跳过")
+        if not role_names:
+            logger.info(f"  [参考图-角色] 角色列解析后无有效角色名，跳过")
+    elif role_name is not None and str(role_name).strip():
+        logger.info(f"  [参考图-角色] 角色={repr(role_name)} 有值但未配置 character_image_dir，跳过")
     else:
-        logger.info(f"  [参考图2] 角色为空或未配置角色目录，跳过")
+        logger.info(f"  [参考图-角色] 角色为空或未配置角色目录，跳过")
 
     # 参考图3：图像汇总.参考图（支持逗号/分号分隔多张；本地路径或相对 reference_image_dir）
     if ref3_raw and str(ref3_raw).strip():
@@ -416,16 +422,24 @@ class ImageGeneratorBase(ABC):
 class ComfyUIImageGenerator(ImageGeneratorBase):
     """基于ComfyUI的图像生成器（使用ZImageClient）"""
     
-    def __init__(self, server_address: str = "127.0.0.1:8188"):
+    def __init__(
+        self,
+        server_address: str = "127.0.0.1:8188",
+        txt2img_workflow_path: Optional[str] = None,
+    ):
         """
         初始化ComfyUI图像生成器
         
         Args:
             server_address: ComfyUI服务器地址
+            txt2img_workflow_path: 文生图工作流 JSON 路径（可选，默认 z_image_workflow.json）
         """
         try:
             from z_image_client import ZImageClient
-            self.client = ZImageClient(server_address=server_address)
+            self.client = ZImageClient(
+                server_address=server_address,
+                workflow_path=txt2img_workflow_path,
+            )
             self._available = True
         except ImportError:
             self.client = None
@@ -813,13 +827,11 @@ class BatchImageGenerator:
                     logger.info(f"\n[{idx}/{total}] 处理分镜: {image_prompt.分镜号}")
                     logger.debug(f"  场景内容: {image_prompt.场景内容[:50]}..." if len(image_prompt.场景内容) > 50 else f"  场景内容: {image_prompt.场景内容}")
                     
-                    # 生成参考图（图像提示词）；有参考图时用 act_02_qwen_Image_edit-aigc-3-api（1～3 张）
-                    # 参考图1=场景id.png，参考图2=角色id.png，参考图3=图像汇总.参考图
-                    if generate_reference and image_prompt.图像提示词:
-                        expanded_prompt = self._expand_prompt_if_needed(
-                            image_prompt.图像提示词,
-                            image_prompt.分镜号
-                        )
+                    # 参考图解析：供「参考图」「首帧」「末帧」共用，使同一提示词下走相同工作流（有参考图=图编辑，无=文生图），生成一致
+                    reference_images = None
+                    if (generate_reference and image_prompt.图像提示词
+                            or generate_first_frame and image_prompt.首帧提示词
+                            or generate_last_frame and image_prompt.末帧提示词):
                         reference_images = _resolve_reference_images_for_edit(
                             image_prompt,
                             scenes=self.scenes,
@@ -831,8 +843,15 @@ class BatchImageGenerator:
                         if not reference_images and getattr(image_prompt, "参考图", None):
                             reference_images = _parse_reference_images(image_prompt.参考图)
                             if reference_images:
-                                logger.info(f"  [参考图] 从「参考图」列逗号分隔解析得到: {reference_images}")
-                        # 仅使用图像汇总解析出的 1～3 张参考图，不自动追加上一分镜输出
+                                logger.info(f"  [参考图/首帧/末帧] 从「参考图」列逗号分隔解析得到: {reference_images}")
+                    
+                    # 生成参考图（图像提示词）；有参考图时用 act_02_qwen_Image_edit-aigc-3-api（1～3 张）
+                    # 参考图1=场景id.png，参考图2=角色id.png，参考图3=图像汇总.参考图
+                    if generate_reference and image_prompt.图像提示词:
+                        expanded_prompt = self._expand_prompt_if_needed(
+                            image_prompt.图像提示词,
+                            image_prompt.分镜号
+                        )
                         if reference_images:
                             logger.info(f"  [参考图] 共 {len(reference_images)} 张，将走 有参考图 工作流，并自本地上传至 ComfyUI: {reference_images}")
                             logger.info(f"  [工作流] 使用: act_02_qwen_Image_edit-aigc-3-api.json")
@@ -848,7 +867,7 @@ class BatchImageGenerator:
                             reference_images=reference_images if reference_images else None,
                         )
                     
-                    # 生成首帧
+                    # 生成首帧：与参考图使用同一 reference_images，使「首帧提示词」与「图像提示词」相同时生成一致
                     if generate_first_frame and image_prompt.首帧提示词:
                         expanded_prompt = self._expand_prompt_if_needed(
                             image_prompt.首帧提示词,
@@ -860,10 +879,10 @@ class BatchImageGenerator:
                             "首帧",
                             style_prefix, seed, steps, cfg, width, height,
                             result,
-                            reference_images=None,
+                            reference_images=reference_images if reference_images else None,
                         )
                     
-                    # 生成末帧
+                    # 生成末帧：与参考图使用同一 reference_images，使「末帧提示词」与「图像提示词」相同时生成一致
                     if generate_last_frame and image_prompt.末帧提示词:
                         expanded_prompt = self._expand_prompt_if_needed(
                             image_prompt.末帧提示词,
@@ -875,7 +894,7 @@ class BatchImageGenerator:
                             "末帧",
                             style_prefix, seed, steps, cfg, width, height,
                             result,
-                            reference_images=None,
+                            reference_images=reference_images if reference_images else None,
                         )
                     
                     logger.info(f"  ✓ 完成: {image_prompt.分镜号}")
@@ -1034,7 +1053,11 @@ def create_generator(
     generator_type_lower = generator_type.lower()
     
     if generator_type_lower == "comfyui":
-        return ComfyUIImageGenerator(server_address=server_address)
+        wf = kwargs.get("txt2img_workflow_path")
+        return ComfyUIImageGenerator(
+            server_address=server_address,
+            txt2img_workflow_path=wf,
+        )
     elif generator_type_lower == "nanobanana":
         return NanoBananaImageGenerator(
             api_key=kwargs.get('api_key'),
@@ -1064,6 +1087,8 @@ def batch_generate_images_from_excel_data(
     height: Optional[int] = None,
     episode_filter: Optional[str] = None,
     generator_type: str = "comfyui",
+    provider_profile: Optional[str] = None,
+    txt2img_workflow_path: Optional[str] = None,
     characters: Optional[List[Any]] = None,
     audio_tracks: Optional[List[Any]] = None,
     enable_prompt_expansion: bool = True,
@@ -1099,11 +1124,36 @@ def batch_generate_images_from_excel_data(
         scene_image_dir: 场景图目录，下存 {场景id}.png
         character_image_dir: 角色图目录，下存 {角色id}.png
         reference_image_dir: 图像汇总「参考图」为相对路径时的基准目录
+        provider_profile: 可选，generation_framework 中的图像 profile_id（如 comfyui.z_image_qwen）
+        txt2img_workflow_path: 可选，ComfyUI 文生图工作流 JSON 绝对或相对 lib 的路径
         
     Returns:
         生成结果列表
     """
-    generator = create_generator(generator_type, comfyui_server)
+    try:
+        from generation_framework import (
+            create_image_generator_by_profile,
+            resolve_image_profile_id,
+        )
+
+        pid = resolve_image_profile_id(provider_profile, generator_type)
+        gen_kw: Dict[str, Any] = {}
+        if txt2img_workflow_path:
+            gen_kw["txt2img_workflow_path"] = txt2img_workflow_path
+        generator = create_image_generator_by_profile(pid, comfyui_server, **gen_kw)
+    except ImportError:
+        generator = create_generator(
+            generator_type,
+            comfyui_server,
+            txt2img_workflow_path=txt2img_workflow_path,
+        )
+    except ValueError as e:
+        logger.warning("%s，回退 create_generator", e)
+        generator = create_generator(
+            generator_type,
+            comfyui_server,
+            txt2img_workflow_path=txt2img_workflow_path,
+        )
     batch_generator = BatchImageGenerator(
         generator,
         output_dir,

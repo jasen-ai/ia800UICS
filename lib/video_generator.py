@@ -365,18 +365,31 @@ class ComfyUIVideoGenerator(VideoGeneratorBase):
             workflow = self.load_default_workflow()
             logger.info(f"[图生视频] 使用工作流: {os.path.basename(self.workflow_path)} (单图 i2v)")
         
-        # 更新提示词
-        if prompt:
-            clip_nodes = self.client.find_nodes_by_class_type(workflow, 'CLIPTextEncode')
-            if clip_nodes:
-                # 第一个通常是正提示词
-                self.client.update_workflow_input(workflow, clip_nodes[0], 'text', prompt)
-        
-        # 更新负提示词
-        if negative_prompt:
-            clip_nodes = self.client.find_nodes_by_class_type(workflow, 'CLIPTextEncode')
-            if len(clip_nodes) >= 2:
-                self.client.update_workflow_input(workflow, clip_nodes[1], 'text', negative_prompt)
+        # 更新提示词：按工作流中的正/负节点写入，避免与模板默认（如 "white dragon warrior"）混淆
+        clip_nodes = self.client.find_nodes_by_class_type(workflow, 'CLIPTextEncode')
+        if clip_nodes:
+            positive_node_id = None
+            negative_node_id = None
+            for nid in clip_nodes:
+                meta = (workflow.get(nid) or {}).get('_meta') or {}
+                title = (meta.get('title') or '').lower()
+                if 'positive' in title or '正' in title:
+                    positive_node_id = nid
+                elif 'negative' in title or '负' in title:
+                    negative_node_id = nid
+            # 若未从 title 区分，按常见顺序：本工作流模板中先出现负向(89)再正向(93)
+            if positive_node_id is None and negative_node_id is None and len(clip_nodes) >= 2:
+                negative_node_id = clip_nodes[0]
+                positive_node_id = clip_nodes[1]
+            elif positive_node_id is None and len(clip_nodes) >= 1:
+                positive_node_id = clip_nodes[0]
+            elif negative_node_id is None and len(clip_nodes) >= 2:
+                negative_node_id = clip_nodes[1] if clip_nodes[0] == positive_node_id else clip_nodes[0]
+            if prompt and positive_node_id:
+                self.client.update_workflow_input(workflow, positive_node_id, 'text', prompt)
+            # 负向：未传时显式清空，避免保留模板中的负向或其它默认文案
+            if negative_node_id:
+                self.client.update_workflow_input(workflow, negative_node_id, 'text', negative_prompt or '')
         
         # 更新音频（仅 s2v）：上传并设置 LoadAudio
         if use_s2v and audio_path and os.path.isfile(audio_path):
@@ -537,7 +550,7 @@ class BatchVideoGenerator:
             generator: 视频生成器实例
             output_dir: 输出目录
             characters: 角色列表（用于提示词扩展）
-            enable_prompt_expansion: 是否启用提示词扩展
+            enable_prompt_expansion: 是否启用提示词扩展。扩展会将角色汇总中的「图像提示词/视觉特征」追加到视频提示词后，可能引入额外元素（如龙等）；若需与 ComfyUI 界面相同效果，建议关闭。
         """
         self.generator = generator
         self.output_dir = output_dir
@@ -934,7 +947,8 @@ def batch_generate_videos_from_excel_data(
     enable_prompt_expansion: bool = True,
     sora_api_key: Optional[str] = None,
     sora_host: str = "https://grsai.dakka.com.cn",
-    sora_config_path: Optional[str] = None
+    sora_config_path: Optional[str] = None,
+    provider_profile: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     便捷函数：从Excel数据批量生成视频
@@ -962,24 +976,56 @@ def batch_generate_videos_from_excel_data(
         sora_api_key: Sora API密钥（用于sora类型）
         sora_host: Sora API服务器地址（用于sora类型）
         sora_config_path: Sora配置文件路径（用于sora类型）
+        provider_profile: 可选，generation_framework 视频 profile_id（如 comfyui.default、sora.default）
         
     Returns:
         生成结果列表
     """
-    # 创建生成器
-    if generator_type.lower() == "sora":
-        generator = create_video_generator(
-            generator_type=generator_type,
+    try:
+        from generation_framework import (
+            create_video_generator_by_profile,
+            resolve_video_profile_id,
+        )
+
+        pid = resolve_video_profile_id(provider_profile, generator_type)
+        generator = create_video_generator_by_profile(
+            pid,
+            comfyui_server,
+            workflow_path=workflow_path,
             api_key=sora_api_key,
-            host=sora_host,
-            config_path=sora_config_path
+            sora_host=sora_host,
+            sora_config_path=sora_config_path,
         )
-    else:
-        generator = create_video_generator(
-            generator_type=generator_type,
-            server_address=comfyui_server,
-            workflow_path=workflow_path
-        )
+    except ImportError:
+        if generator_type.lower() == "sora":
+            generator = create_video_generator(
+                generator_type=generator_type,
+                api_key=sora_api_key,
+                host=sora_host,
+                config_path=sora_config_path,
+            )
+        else:
+            generator = create_video_generator(
+                generator_type=generator_type,
+                server_address=comfyui_server,
+                workflow_path=workflow_path,
+            )
+    except ValueError as e:
+        logger.warning("%s，回退 create_video_generator", e)
+        if generator_type.lower() == "sora":
+            generator = create_video_generator(
+                "sora",
+                server_address=comfyui_server,
+                api_key=sora_api_key,
+                host=sora_host,
+                config_path=sora_config_path,
+            )
+        else:
+            generator = create_video_generator(
+                "comfyui",
+                server_address=comfyui_server,
+                workflow_path=workflow_path,
+            )
     
     # 创建批量生成器（支持提示词扩展）
     batch_generator = BatchVideoGenerator(
