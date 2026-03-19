@@ -92,7 +92,9 @@ UICS/
 - **Excel 路径**：默认 `UICS/all_episodes.xlsx`，可在 `server.py` 中修改 `EXCEL_FILE`
 - **输出目录**：默认 `UICS/output`（`OUTPUT_FOLDER`）
 - **密钥**：生产环境请修改 `SECRET_KEY`
-
+## 输入excel标准格式
+all_episodes.xlsx
+[标准格式说明](docs/all_episodes.xlsx标准格式说明.md)
 ## API 文档
 
 - Swagger UI：http://localhost:5000/docs  
