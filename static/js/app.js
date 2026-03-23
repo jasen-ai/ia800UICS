@@ -72,6 +72,13 @@ createApp({
                     comfyuiServer: '127.0.0.1:8188',
                     enablePromptExpansion: true
                 },
+                scene: {
+                    outputDir: './output',  // 后端会自动解析为UICS目录下的output（UICS/output）
+                    episodeFilter: '',
+                    sceneFilter: '',  // 场景id/场景名，空值表示所有场景
+                    generatorType: 'comfyui',
+                    comfyuiServer: '127.0.0.1:8188'
+                },
                 audio: {
                     outputDir: './output',  // 后端会自动解析为UICS目录下的output（UICS/output）
                     episodeFilter: '',
@@ -467,7 +474,9 @@ createApp({
             }
             
             // 预览列定义（无论数据中是否已有，都强制加入列集合，保证前端表格里一定能看到这四列）
-            const previewColumns = ['图像预览', '首帧预览', '末帧预览', '视频预览'];
+            const previewColumns = this.selectedSheet === '场景汇总'
+                ? ['场景图预览']
+                : ['图像预览', '首帧预览', '末帧预览', '视频预览'];
             previewColumns.forEach(c => columnsSet.add(c));
             
             // 操作列（仅在图像汇总和图像提示词工作表显示）
@@ -575,13 +584,13 @@ createApp({
                             const colName = prop || (instance.getSettings().columns[col]?.data);
                             
                             // 调试日志：检查渲染器是否被调用以及接收到的值
-                            if (colName && ['图像预览', '首帧预览', '末帧预览', '视频预览'].includes(colName)) {
+                            if (colName && previewColumns.includes(colName)) {
                                 console.log(`[预览渲染] 列: ${colName}, 行: ${row}, 原始值:`, value, `类型: ${typeof value}`);
                             }
 
                             const filename = value ? String(value).trim() : '';
                             if (filename && filename !== 'None' && filename !== 'nan' && filename !== '') {
-                                if (colName && ['图像预览', '首帧预览', '末帧预览', '视频预览'].includes(colName)) {
+                                    if (colName && previewColumns.includes(colName)) {
                                     console.log(`[预览渲染] 处理文件名: "${filename}"`);
                                 }
                                 const ext = filename.split('.').pop().toLowerCase();
@@ -917,7 +926,9 @@ createApp({
             if (oldValue === newValue) return;
             
             // 预览列是只读的，不保存
-            const previewColumns = ['图像预览', '首帧预览', '末帧预览', '视频预览'];
+            const previewColumns = this.selectedSheet === '场景汇总'
+                ? ['场景图预览']
+                : ['图像预览', '首帧预览', '末帧预览', '视频预览'];
             const colHeader = this.hotInstance.getColHeader(col);
             if (previewColumns.includes(colHeader)) {
                 return;
@@ -1042,6 +1053,37 @@ createApp({
                     })
                 });
                 
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`任务已创建: ${data.task_id}`);
+                    this.activeTab = 'tasks';
+                    await this.loadTasks();
+                } else {
+                    alert('创建任务失败: ' + (data.error || '未知错误'));
+                }
+            } catch (error) {
+                alert('网络错误: ' + error.message);
+            }
+        },
+
+        // 生成场景汇总表中的场景图（根据 scene.图像提示词 + scene.参考图）
+        async generateSceneImages() {
+            try {
+                const response = await fetch('/api/generate/scene_images', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-ID': this.sessionId
+                    },
+                    body: JSON.stringify({
+                        output_dir: this.generateConfig.scene.outputDir,
+                        episode_filter: this.generateConfig.scene.episodeFilter || null,
+                        scene_filter: this.generateConfig.scene.sceneFilter || null,
+                        generator_type: this.generateConfig.scene.generatorType,
+                        comfyui_server: this.generateConfig.scene.comfyuiServer
+                    })
+                });
+
                 const data = await response.json();
                 if (response.ok) {
                     alert(`任务已创建: ${data.task_id}`);
@@ -1235,7 +1277,7 @@ createApp({
                         if (this.activeTab === 'excel') {
                             console.log('[WebSocket] 刷新Excel预览...');
                             // 延迟刷新，确保文件已完全写入（图片生成需要更长时间）
-                            const delay = data.task_type === 'image' ? 3000 : 1500;
+                            const delay = (data.task_type === 'image' || data.task_type === 'scene') ? 3000 : 1500;
                             setTimeout(() => {
                                 console.log('[WebSocket] 开始刷新Excel数据...');
                                 // 强制重新加载Excel数据
